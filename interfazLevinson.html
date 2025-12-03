@@ -1,0 +1,411 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VLSM // HACKER.NET</title>
+    <style>
+        /* --- ESTÉTICA CYBERPUNK/HACKER --- */
+        @import url('https://fonts.googleapis.com/css2?family=VT323&display=swap');
+
+        :root {
+            --color-text: #00ff66; /* Verde fosforescente brillante */
+            --color-bg: #000000;
+            --color-border: #006633;
+            --font-terminal: 'Consolas', 'Monospace', 'VT323', monospace;
+        }
+
+        body {
+            background-color: var(--color-bg);
+            color: var(--color-text);
+            font-family: var(--font-terminal);
+            margin: 0;
+            padding: 20px;
+            overflow-x: hidden;
+            text-shadow: 0 0 5px var(--color-text); /* Efecto glow */
+        }
+
+        /* Efecto de Scanlines sutil */
+        body::before {
+            content: '';
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            background: repeating-linear-gradient(
+                transparent 0,
+                rgba(0, 0, 0, 0.2) 1px,
+                transparent 2px,
+                rgba(0, 0, 0, 0.2) 3px
+            );
+            opacity: 0.1;
+            z-index: -1;
+        }
+
+        h1 {
+            color: var(--color-text);
+            text-align: center;
+            border-bottom: 2px solid var(--color-border);
+            padding-bottom: 10px;
+            margin-bottom: 30px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            border: 1px solid var(--color-border);
+            padding: 20px;
+            box-shadow: 0 0 15px var(--color-text) inset, 0 0 15px var(--color-text);
+        }
+
+        /* Estilos de inputs y botones */
+        input[type="text"], input[type="number"], button {
+            background-color: transparent;
+            color: var(--color-text);
+            border: 1px solid var(--color-border);
+            padding: 8px;
+            font-family: var(--font-terminal);
+            margin: 5px 0;
+            box-shadow: 0 0 3px var(--color-text) inset;
+        }
+
+        input[type="text"]:focus, input[type="number"]:focus {
+            outline: none;
+            box-shadow: 0 0 8px var(--color-text) inset;
+        }
+
+        button {
+            cursor: pointer;
+            transition: all 0.2s;
+            box-shadow: 0 0 8px var(--color-text);
+            text-transform: uppercase;
+        }
+
+        button:hover {
+            background-color: var(--color-text);
+            color: var(--color-bg);
+            box-shadow: 0 0 15px var(--color-text);
+        }
+
+        /* Estilos de la tabla de requisitos */
+        #requirementsTable {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 15px;
+        }
+
+        #requirementsTable th, #requirementsTable td {
+            border: 1px dashed var(--color-border);
+            padding: 8px;
+            text-align: left;
+        }
+
+        #requirementsTable th {
+            background-color: rgba(0, 255, 102, 0.1);
+        }
+
+        /* Estilos de la tabla de resultados */
+        #resultsTable {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 30px;
+        }
+
+        #resultsTable th, #resultsTable td {
+            border: 1px solid var(--color-border);
+            padding: 10px;
+            text-align: center;
+        }
+
+        #resultsTable th {
+            background-color: rgba(0, 255, 102, 0.2);
+            font-weight: bold;
+        }
+
+        .error {
+            color: #ff0000;
+            text-shadow: 0 0 5px #ff0000;
+            margin-top: 10px;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <h1>[:: VLSM CALCULATOR v1.1 INITIATED ::]</h1>
+
+        <div>
+            <label for="baseIP">IP Base (CIDR):</label>
+            <input type="text" id="baseIP" placeholder="ej. 192.168.1.0/24" value="192.168.1.0/24">
+            <button onclick="addRequirement()">+ AÑADIR SUBRED</button>
+            <button onclick="calculateVLSM()">COMPUTAR VLSM</button>
+            <p id="ipError" class="error"></p>
+        </div>
+
+        <hr style="border-color: var(--color-border); margin: 20px 0;">
+
+        <h2>[:: REQUISITOS DE SUBREDES ::]</h2>
+        <table id="requirementsTable">
+            <thead>
+                <tr>
+                    <th>Nombre de la Subred</th>
+                    <th>Hosts Requeridos</th>
+                    <th>Acción</th>
+                </tr>
+            </thead>
+            <tbody id="requirementsBody">
+                </tbody>
+        </table>
+
+        <hr style="border-color: var(--color-border); margin: 20px 0;">
+
+        <h2 style="margin-bottom: 10px;">[:: RESULTADOS DE ASIGNACIÓN VLSM ::]</h2>
+        <table id="resultsTable">
+            <thead>
+                <tr>
+                    <th>Subred</th>
+                    <th>Hosts Req.</th>
+                    <th>Hosts Disp.</th> <th>CIDR</th>
+                    <th>Máscara</th>
+                    <th>Dirección de Subred</th>
+                    <th>Primera IP Usable</th>
+                    <th>Última IP Usable</th>
+                    <th>Broadcast</th>
+                </tr>
+            </thead>
+            <tbody id="resultsBody">
+                </tbody>
+        </table>
+
+        <div id="summary" style="margin-top: 20px; font-weight: bold;"></div>
+    </div>
+
+    <script>
+        // Función auxiliar para convertir IP a decimal (ej. "192.168.1.0" -> 3232235776)
+        function ipToDecimal(ip) {
+            return ip.split('.').reduce((acc, octet) => (acc << 8) + parseInt(octet, 10), 0) >>> 0;
+        }
+
+        // Función auxiliar para convertir decimal a IP (ej. 3232235776 -> "192.168.1.0")
+        function decimalToIp(decimal) {
+            return [
+                (decimal >>> 24) & 0xFF,
+                (decimal >>> 16) & 0xFF,
+                (decimal >>> 8) & 0xFF,
+                decimal & 0xFF
+            ].join('.');
+        }
+
+        // --- MANEJO DE REQUISITOS DE SUBREDES ---
+
+        let requirementCounter = 0;
+
+        function addRequirement() {
+            requirementCounter++;
+            const tableBody = document.getElementById('requirementsBody');
+            const row = tableBody.insertRow();
+            row.id = `req-row-${requirementCounter}`;
+
+            // Columna Nombre
+            let cell1 = row.insertCell(0);
+            cell1.innerHTML = `<input type="text" value="Subred ${requirementCounter}" class="subnet-name" style="width: 90%;">`;
+
+            // Columna Hosts
+            let cell2 = row.insertCell(1);
+            cell2.innerHTML = `<input type="number" value="10" min="1" class="hosts-required" style="width: 80px;">`;
+
+            // Columna Acción
+            let cell3 = row.insertCell(2);
+            cell3.innerHTML = `<button onclick="removeRequirement(${requirementCounter})" style="padding: 4px; font-size: 0.8em; box-shadow: none;">[X]</button>`;
+        }
+
+        function removeRequirement(id) {
+            document.getElementById(`req-row-${id}`).remove();
+        }
+
+        // Añadir una fila inicial al cargar
+        document.addEventListener('DOMContentLoaded', () => {
+            addRequirement();
+            addRequirement();
+        });
+
+
+        // --- LÓGICA DE CÁLCULO VLSM ---
+
+        function calculateVLSM() {
+            const baseIPInput = document.getElementById('baseIP').value;
+            const ipError = document.getElementById('ipError');
+            const resultsBody = document.getElementById('resultsBody');
+            const summaryDiv = document.getElementById('summary');
+            
+            resultsBody.innerHTML = '';
+            summaryDiv.innerHTML = '';
+            ipError.textContent = '';
+
+            // 1. Validar y parsear la IP Base
+            const ipRegex = /^(\d{1,3}\.){3}\d{1,3}\/(\d{1,2})$/;
+            if (!ipRegex.test(baseIPInput)) {
+                ipError.textContent = 'ERROR: El formato de IP Base (ej. 192.168.1.0/24) es inválido.';
+                return;
+            }
+
+            const [ipPart, cidrPart] = baseIPInput.split('/');
+            const baseCIDR = parseInt(cidrPart, 10);
+            const baseIPDec = ipToDecimal(ipPart);
+
+            if (baseCIDR < 0 || baseCIDR > 32) {
+                 ipError.textContent = 'ERROR: El valor CIDR debe estar entre 0 y 32.';
+                 return;
+            }
+
+            // Máscara de red base (ej. /24 -> 255.255.255.0)
+            const baseMaskDec = (~0) << (32 - baseCIDR);
+            const baseNetworkDec = baseIPDec & baseMaskDec;
+            
+            // Asegurar que la IP base sea la dirección de red
+            if (baseIPDec !== baseNetworkDec) {
+                 ipError.textContent = `AVISO: La IP base ${baseIPInput} no es una dirección de red. Usaremos ${decimalToIp(baseNetworkDec)}/${baseCIDR} como base.`;
+            }
+
+
+            // 2. Recolectar requisitos
+            const requirements = [];
+            const rows = document.getElementById('requirementsBody').children;
+
+            for (let i = 0; i < rows.length; i++) {
+                const nameInput = rows[i].querySelector('.subnet-name');
+                const hostsInput = rows[i].querySelector('.hosts-required');
+                
+                const hosts = parseInt(hostsInput.value, 10);
+                const name = nameInput.value.trim() || `Subred ${i + 1}`;
+
+                if (isNaN(hosts) || hosts < 1) {
+                    ipError.textContent = `ERROR: El número de hosts requeridos para "${name}" debe ser un entero positivo.`;
+                    return;
+                }
+
+                requirements.push({
+                    name: name,
+                    hosts: hosts,
+                    // Espacio para la IP de red que se asignará
+                    networkAddress: null 
+                });
+            }
+
+            if (requirements.length === 0) {
+                 ipError.textContent = 'ERROR: Debe agregar al menos un requisito de subred.';
+                 return;
+            }
+
+            // 3. CORRECCIÓN CRÍTICA: Ordenar por Hosts Requeridos (Mayor a Menor)
+            requirements.sort((a, b) => b.hosts - a.hosts);
+            
+            // 4. Iniciar el algoritmo VLSM
+            let currentNetworkAddress = baseNetworkDec;
+            let totalHostsNeeded = 0;
+            let totalUsableAddresses = 0;
+
+            const results = [];
+
+            for (const req of requirements) {
+                // Hosts_req + Network + Broadcast = Total_direcciones
+                const totalAddressesNeeded = req.hosts + 2; 
+
+                // Encontrar la potencia de 2 más pequeña que cubra totalAddressesNeeded
+                let powerOf2 = 1;
+                let bits = 0; // Número de bits para la porción de host
+                while (powerOf2 < totalAddressesNeeded) {
+                    powerOf2 *= 2;
+                    bits++;
+                }
+
+                // El número de bits de red (CIDR) será 32 - bits_de_host
+                const subnetCIDR = 32 - bits;
+                
+                // Si el CIDR de la subred es menor que el CIDR base, es un error en el requerimiento VLSM.
+                if (subnetCIDR < baseCIDR) {
+                     ipError.textContent = `ERROR: La subred "${req.name}" requiere un CIDR (${subnetCIDR}) más pequeño que el CIDR base (${baseCIDR}). Revise sus hosts.`;
+                     return;
+                }
+
+                // Máscara de subred para este bloque
+                const subnetMaskDec = (~0) << bits;
+                const subnetMaskIP = decimalToIp(subnetMaskDec >>> 0);
+
+                // Asignar la dirección de red actual
+                const networkAddressDec = currentNetworkAddress;
+
+                // Verificar si la nueva red se sale del rango de la red base (solo si la máscara es la misma)
+                // Aunque VLSM asegura que el bloque esté dentro, esto es una buena verificación de límites lógicos.
+                const baseBroadcastDec = baseNetworkDec + ((1 << (32 - baseCIDR)) - 1);
+
+                if (networkAddressDec > baseBroadcastDec) {
+                    // Este check es simple. Una comprobación más rigurosa sería
+                    // if ((networkAddressDec | (~baseMaskDec)) > baseBroadcastDec) { ... }
+                    // Pero para el propósito de este demo, basta con:
+                    if (networkAddressDec + powerOf2 - 1 > baseBroadcastDec) {
+                       ipError.textContent = `ERROR: El bloque de subred para "${req.name}" (${powerOf2} direcciones) excede el límite de la red base (${decimalToIp(baseNetworkDec)}/${baseCIDR}). No hay suficiente espacio.`;
+                       return;
+                    }
+                }
+
+                const firstUsableIPDec = networkAddressDec + 1;
+                const broadcastAddressDec = networkAddressDec + powerOf2 - 1;
+                const lastUsableIPDec = broadcastAddressDec - 1;
+                
+                // Hosts utilizables/disponibles (Total_direcciones - 2)
+                const usableHosts = powerOf2 - 2; 
+
+                results.push({
+                    name: req.name,
+                    hostsRequired: req.hosts,
+                    usableHosts: usableHosts, // AÑADIDO: Hosts disponibles/utilizables
+                    subnetCIDR: subnetCIDR,
+                    subnetMask: subnetMaskIP,
+                    networkAddress: decimalToIp(networkAddressDec),
+                    firstUsableIP: decimalToIp(firstUsableIPDec),
+                    lastUsableIP: decimalToIp(lastUsableIPDec),
+                    broadcast: decimalToIp(broadcastAddressDec),
+                    totalAddresses: powerOf2
+                });
+
+                // La próxima dirección de red es el Broadcast + 1 de la subred actual
+                currentNetworkAddress = broadcastAddressDec + 1;
+
+                totalHostsNeeded += req.hosts;
+                totalUsableAddresses += usableHosts;
+            }
+
+            // 5. Mostrar resultados
+            results.forEach(res => {
+                const row = resultsBody.insertRow();
+                row.innerHTML = `
+                    <td>${res.name}</td>
+                    <td>${res.hostsRequired}</td>
+                    <td>${res.usableHosts}</td> <td>/${res.subnetCIDR}</td>
+                    <td>${res.subnetMask}</td>
+                    <td>${res.networkAddress}</td>
+                    <td>${res.firstUsableIP}</td>
+                    <td>${res.lastUsableIP}</td>
+                    <td>${res.broadcast}</td>
+                `;
+            });
+
+            // 6. Mostrar resumen
+            const baseTotalAddresses = (1 << (32 - baseCIDR));
+            const addressesUsed = currentNetworkAddress - baseNetworkDec;
+            const remainingAddresses = baseTotalAddresses - addressesUsed;
+
+            summaryDiv.innerHTML = `
+                <p>BASE: ${decimalToIp(baseNetworkDec)}/${baseCIDR} (Total de ${baseTotalAddresses} direcciones)</p>
+                <p>DIRECCIONES USADAS: ${addressesUsed}</p>
+                <p>DIRECCIONES RESTANTES: ${remainingAddresses} (${decimalToIp(currentNetworkAddress)} - ${decimalToIp(baseBroadcastDec)})</p>
+                <p>UTILIZACIÓN DE HOSTS: ${totalHostsNeeded} / ${totalUsableAddresses} (Total de Hosts Requeridos / Hosts Asignados)</p>
+            `;
+        }
+
+    </script>
+</body>
+</html>
